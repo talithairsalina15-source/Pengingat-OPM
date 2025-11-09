@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Pengingat Minum OPM</title>
+<style>
+  :root{--bg:#f7fafc;--card:#ffffff;--muted:#6b7280;--accent:#0ea5a4;}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial; margin:0; background:var(--bg); color:#111}
+  .wrap{max-width:600px;margin:40px auto;padding:20px;}
+  .card{background:var(--card);border-radius:14px;padding:20px;box-shadow:0 2px 6px rgba(0,0,0,0.08)}
+  h1{font-size:1.6rem;margin-top:0;text-align:center}
+  label{display:block;font-size:0.9rem;margin-top:10px;color:var(--muted)}
+  input{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ee;margin-top:6px;box-sizing:border-box}
+  button{background:var(--accent);color:white;border:none;padding:10px 14px;border-radius:8px;cursor:pointer;margin-top:14px;font-weight:600}
+  button:hover{opacity:0.9}
+  .danger{background:#ef4444}
+  .gray{background:#374151}
+  .info{margin-top:14px;color:var(--muted);font-size:0.9rem}
+  .countdown{font-weight:700;font-size:1.1rem;margin-top:12px;text-align:center}
+  footer{margin-top:18px;font-size:0.8rem;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>Pengingat Minum OPM</h1>
+    <label>Nama Pengingat</label>
+    <input id="reminder-title" placeholder="Misal: Pemberantasan Cacing Sekolah A">
+
+    <label>Waktu berikutnya</label>
+    <input id="reminder-datetime" type="datetime-local">
+
+    <label>Ulang setiap (hari)</label>
+    <input id="reminder-interval" type="number" min="0" value="0" placeholder="0 = hanya sekali">
+
+    <button id="set-reminder">Set Pengingat</button>
+    <button id="cancel-reminder" class="danger">Hapus Pengingat</button>
+    <button id="test-notif" class="gray">Tes Notifikasi</button>
+
+    <div id="reminder-info" class="info"></div>
+    <div id="countdown" class="countdown"></div>
+  </div>
+  <footer>Halaman ini menyimpan data di browser Anda (localStorage). Aktifkan dan izinkan notifikasi agar alarm muncul tepat waktu.</footer>
+</div>
+
+<audio id="beep" preload="auto">
+  <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQAAAAA=" type="audio/wav">
+</audio>
+
+<script>
+const $ = id => document.getElementById(id);
+const beep = () => { try{ $('beep').play() } catch(e){} };
+
+let reminder = JSON.parse(localStorage.getItem('opm_reminder')||'null');
+let countdownTimer = null;
+
+function saveReminder(r){ localStorage.setItem('opm_reminder', JSON.stringify(r)); reminder=r; renderReminder(); }
+function clearReminder(){ localStorage.removeItem('opm_reminder'); reminder=null; renderReminder(); }
+
+function renderReminder(){
+  const info = $('reminder-info'); const cd = $('countdown');
+  if(!reminder){ info.textContent = 'Belum ada pengingat aktif.'; cd.textContent=''; if(countdownTimer){clearInterval(countdownTimer); countdownTimer=null;} return; }
+  info.textContent = `Judul: ${reminder.title || '-'} | Interval: ${reminder.interval_days} hari | Status: aktif`;
+  startCountdown();
+}
+
+function startCountdown(){
+  if(countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = setInterval(()=>{
+    const now = new Date();
+    const due = new Date(reminder.next_at);
+    const diff = due - now;
+    if(diff <= 0){
+      triggerReminder();
+      if(reminder.interval_days > 0){
+        const next = new Date(due.getTime() + reminder.interval_days*24*60*60*1000);
+        reminder.next_at = next.toISOString();
+        saveReminder(reminder);
+      } else {
+        clearInterval(countdownTimer); countdownTimer=null;
+        clearReminder();
+      }
+      return;
+    }
+    $('countdown').textContent = formatDiff(diff) + ' (Next: '+ due.toLocaleString()+')';
+  }, 800);
+}
+
+function formatDiff(ms){
+  const totalSec = Math.floor(ms/1000);
+  const d = Math.floor(totalSec / 86400); 
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${d}h ${h}j ${m}m ${s}d`;
+}
+
+function triggerReminder(){
+  const title = reminder.title || 'Pengingat OPM';
+  const body = 'Waktu minum obat pemberantasan cacing (OPM) telah tiba.';
+  if("Notification" in window && Notification.permission === "granted"){
+    new Notification(title, {body});
+    beep();
+  } else if("Notification" in window && Notification.permission !== "denied"){
+    Notification.requestPermission().then(p=>{
+      if(p==='granted'){ new Notification(title,{body}); beep(); }
+      else { alert(title + '\\n' + body); beep(); }
+    });
+  } else {
+    alert(title + '\\n' + body);
+    beep();
+  }
+}
+
+/* === UI hooks === */
+$('set-reminder').addEventListener('click', ()=>{
+  const title = $('reminder-title').value.trim();
+  const dt = $('reminder-datetime').value;
+  if(!dt){ alert('Pilih waktu pengingat.'); return; }
+  const interval = parseInt($('reminder-interval').value) || 0;
+  const next = new Date(dt);
+  if(isNaN(next.getTime())){ alert('Waktu tidak valid'); return; }
+  const r = {title, next_at: next.toISOString(), interval_days: interval};
+  saveReminder(r);
+  alert('Pengingat disimpan.');
+});
+$('cancel-reminder').addEventListener('click', ()=>{
+  if(confirm('Hapus pengingat aktif?')) clearReminder();
+});
+$('test-notif').addEventListener('click', ()=>{
+  const fake = {title:'Tes Notifikasi OPM', next_at:new Date().toISOString(), interval_days:0};
+  reminder = fake;
+  triggerReminder();
+});
+
+/* === Init === */
+renderReminder();
+if(reminder){
+  $('reminder-title').value = reminder.title || '';
+  const dt = new Date(reminder.next_at);
+  const localISO = new Date(dt.getTime() - dt.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  $('reminder-datetime').value = localISO;
+  $('reminder-interval').value = reminder.interval_days || 0;
+}
+</script>
+</body>
+</html>
