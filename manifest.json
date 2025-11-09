@@ -1,0 +1,15 @@
+{
+  "name": "Pengingat OPM",
+  "short_name": "OPM Reminder",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f7fafc",
+  "theme_color": "#0ea5a4",
+  "icons": [
+    {
+      "src": "bell.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
